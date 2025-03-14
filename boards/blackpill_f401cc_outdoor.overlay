@@ -1,0 +1,50 @@
+/ {
+    chosen {
+		zephyr,shell-uart = &cdc_acm_uart0;
+        zephyr,console = &cdc_acm_uart0;
+	};
+    aliases {
+
+    };
+};
+
+&zephyr_udc0 {
+	cdc_acm_uart0: cdc_acm_uart0 {
+		compatible = "zephyr,cdc-acm-uart";
+	};
+};
+
+&spi1 {
+    lora: lora@0 {
+        compatible = "semtech,sx1276";
+        reg = <0>;
+        reset-gpios = <&gpioa 8 GPIO_ACTIVE_LOW>;
+        dio-gpios = 
+            <&gpiob 13 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
+            <&gpiob 12 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
+            <&gpiob 15 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+        spi-max-frequency = <1000000>;
+        power-amplifier-output = "pa-boost";
+        label = "lora_node";
+    };
+};
+
+&i2c1 {
+    pinctrl-0 = <&i2c1_scl_pb6 &i2c1_sda_pb7>;
+	sht3x: sht3xd@44 {
+		compatible = "sensirion,sht3xd";
+		reg = <0x44>;
+        label = "sht3x_sensor";
+	};
+};
+
+&usart2 {
+    current-speed = <9600>;
+    status = "okay";
+    pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
+	pinctrl-names = "default";
+    pmsensor: pmsensor {
+        compatible = "plantower,pms7003";
+        label = "pms_device";
+    };
+};

@@ -1,0 +1,66 @@
+/ {
+    chosen {
+		zephyr,shell-uart = &cdc_acm_uart0;
+        zephyr,console = &cdc_acm_uart0;
+	};
+
+};
+
+&zephyr_udc0 {
+	cdc_acm_uart0: cdc_acm_uart0 {
+		compatible = "zephyr,cdc-acm-uart";
+	};
+};
+
+&spi1 {
+    lora: lora@0 {
+        compatible = "semtech,sx1276";
+        reg = <0>;
+        reset-gpios = <&gpioa 8 GPIO_ACTIVE_LOW>;
+        dio-gpios = 
+            <&gpiob 12 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
+            <&gpiob 13 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
+            <&gpiob 14 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+        spi-max-frequency = <1000000>;
+        power-amplifier-output = "pa-boost";
+        label = "lora_node";
+    };
+};
+
+&i2c1 {
+	sht3x: sht3xd@44 {
+		compatible = "sensirion,sht3xd";
+		reg = <0x44>;
+        label = "sht3x_sensor";
+	};
+    ssd1306_ssd1306_128x64: ssd1306@3c {
+        compatible = "solomon,ssd1306fb";
+        reg = <0x3c>;
+        width = <128>;
+        height = <64>;
+        segment-offset = <0>;
+        page-offset = <0>;
+        display-offset = <0>;
+        multiplex-ratio = <63>;
+        segment-remap;
+        com-invdir;
+        prechargep = <0x22>;
+        label = "ssd1306_display";
+	};
+};
+
+&usart1 {
+	current-speed = <9600>;
+    pmsensor: pmsensor {
+        compatible = "plantower,pms7003";
+        label = "pms_device";
+    };
+};
+
+&usart2 {
+    current-speed = <9600>;
+    status = "okay";
+    pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
+	pinctrl-names = "default";
+    label = "cm1106_co2";
+};
