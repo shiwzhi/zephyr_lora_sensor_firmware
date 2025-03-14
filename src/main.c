@@ -15,6 +15,13 @@
 #include <zephyr/drivers/lora.h>
 #include <zephyr/drivers/hwinfo.h>
 
+#include <zephyr/lorawan/lorawan.h>
+
+#define LOG_LEVEL CONFIG_LOG_DEFAULT_LEVEL
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(main);
+
 #define PMS_DEVICE_LABEL "pms_device"
 #define SHT3X_LABEL "sht3x_sensor"
 #define SSD1306_DEVICE_LABEL "ssd1306_display"
@@ -26,13 +33,6 @@
 
 uint16_t g_pm1, g_pm25, g_pm10, g_co2;
 float g_temp, g_hum;
-
-bool g_is_co2 = false;
-bool g_is_temp = false;
-bool g_is_hum = false;
-bool g_is_lora = false;
-bool g_is_voc = false;
-bool g_is_pressure = false;
 
 uint8_t cm1106_rx_index = 0;
 uint8_t cm1106_rx_buffer[64];
@@ -150,8 +150,8 @@ void sht3x_thread(void *, void *, void *)
 		g_temp = sensor_value_to_double(&temp);
 		g_hum = sensor_value_to_double(&hum);
 		printf("SHT3XD: %.2f Cel ; %0.2f %%RH\n",
-			   g_temp,
-			   g_hum);
+			   (double)g_temp,
+			   (double)g_hum);
 		k_msleep(5000);
 	}
 }
@@ -235,7 +235,7 @@ void ssd1306_display_thread(void *, void *, void *)
 	if (cfb_framebuffer_init(dev))
 	{
 		printf("Framebuffer initialization failed!\n");
-		return 0;
+		return;
 	}
 
 	display_blanking_off(dev);
@@ -248,7 +248,7 @@ void ssd1306_display_thread(void *, void *, void *)
 		cfb_framebuffer_clear(dev, false);
 
 		char temp_hum_str[30];
-		sprintf(temp_hum_str, "%.1fC %.1f%%", g_temp, g_hum);
+		sprintf(temp_hum_str, "%.1fC %.1f%%", (double)g_temp, (double)g_hum);
 		cfb_print(dev, temp_hum_str, 0, 0);
 
 		char co2_str[20];
@@ -268,116 +268,54 @@ K_THREAD_DEFINE(ssd1306_tid, STACKSIZE,
 				ssd1306_display_thread, NULL, NULL, NULL,
 				PRIORITY, 0, 5000);
 
-double roundf_val(float input, int decimal)
-{
-	int _pow = 1;
-	for (int i = 0; i < decimal; i++)
-	{
-		_pow = _pow * 10;
-	}
-
-	double value;
-	if (input >= 0)
-	{
-		value = (int)(input * _pow + 0.5f);
-	}
-	else
-	{
-		value = (int)(input * _pow - 0.5f);
-	}
-
-	return value / _pow;
-}
-void lora_node_task(void *, void *, void *)
-{
-	const struct device *const lora_dev = device_get_binding(LORA_DEVICE_LABEL);
-	struct lora_modem_config config;
-	int ret;
-
-	if (!device_is_ready(lora_dev))
-	{
-		printf("%s Device not ready", lora_dev->name);
-		return;
-	}
-
-	config.frequency = 410000000;
-	config.bandwidth = BW_125_KHZ;
-	config.datarate = SF_7;
-	config.preamble_len = 8;
-	config.coding_rate = CR_4_5;
-	config.iq_inverted = false;
-	config.public_network = false;
-	config.tx_power = 18;
-	config.tx = true;
-
-	ret = lora_config(lora_dev, &config);
-	if (ret < 0)
-	{
-		printf("LoRa config failed");
-		return;
-	}
-
-	while (1)
-	{
-		k_msleep(60 * 1000);
-		
-		cJSON *root = cJSON_CreateObject();
-		if (root == NULL)
-		{
-			printk("Failed to create JSON object\n");
-			return;
-		}
-
-		cJSON_AddNumberToObject(root, "temp", roundf_val(g_temp, 1));
-		cJSON_AddNumberToObject(root, "hum", roundf_val(g_hum, 1));
-		cJSON_AddNumberToObject(root, "co2", g_co2);
-		cJSON_AddNumberToObject(root, "pm1", g_pm1);
-		cJSON_AddNumberToObject(root, "pm25", g_pm25);
-		cJSON_AddNumberToObject(root, "pm10", g_pm10);
-
-		uint8_t deviceEUI[8] = {};
-		int ret = hwinfo_get_device_id(deviceEUI, 8);
-		if (ret > 0)
-		{
-			char eui_str[20];
-			for (int i = 0; i < ret; i++)
-			{
-				sprintf(eui_str + i * 2, "%02X", deviceEUI[i]);
-			}
-			eui_str[16] = '\0';
-			cJSON_AddStringToObject(root, "id", eui_str);
-		}
-		else
-		{
-			printf("can not get device id, ret: %d\r\n", ret);
-		}
-
-		char *json_str = cJSON_Print(root);
-		if (json_str)
-		{
-			printk("Serialized JSON: %s\n", json_str);
-			ret = lora_send(lora_dev, json_str, strlen(json_str));
-			if (ret < 0)
-			{
-				printf("LoRa send failed");
-				return 0;
-			}
-
-			printf("Data sent!");
-
-			cJSON_free(json_str); // Free allocated memory
-		}
-
-		cJSON_Delete(root); // Free JSON object
-	}
-}
-
-K_THREAD_DEFINE(lora_node_tid, STACKSIZE,
-				lora_node_task, NULL, NULL, NULL,
-				PRIORITY, 0, 5000);
-
 int main(void)
 {
+	k_msleep(2000);
+	const struct device *lora_dev;
+	struct lorawan_join_config join_cfg;
+	uint8_t dev_eui[8];
+	uint8_t join_eui[8];
+	uint8_t app_key[16];
+	int ret;
+
+	lora_dev = device_get_binding("lora_node");
+	if (!device_is_ready(lora_dev))
+	{
+		LOG_ERR("%s: device not ready.", lora_dev->name);
+		return 0;
+	}
+
+	ret = lorawan_start();
+	if (ret < 0)
+	{
+		LOG_ERR("lorawan_start failed: %d", ret);
+		return 0;
+	}
+
+	memset(dev_eui, 0, 8);
+	memset(join_eui, 0, 8);
+	memset(app_key, 0, 16);
+
+	hwinfo_get_device_id(dev_eui, 8);
+	hwinfo_get_device_id(app_key, 16);
+
+	LOG_HEXDUMP_INF(dev_eui, 8, "DEVEUI: ");
+	LOG_HEXDUMP_INF(join_eui, 8, "JOINEUI: ");
+	LOG_HEXDUMP_INF(app_key, 16, "APPKEY: ");
+
+	join_cfg.mode = LORAWAN_ACT_OTAA;
+	join_cfg.dev_eui = dev_eui;
+	join_cfg.otaa.join_eui = join_eui;
+	join_cfg.otaa.app_key = app_key;
+	join_cfg.otaa.nwk_key = app_key;
+	join_cfg.otaa.dev_nonce = 0u;
+
+	ret = lorawan_join(&join_cfg);
+	if (ret < 0)
+	{
+		LOG_ERR("lorawan_join_network failed: %d", ret);
+		return 0;
+	}
 
 	while (1)
 	{
