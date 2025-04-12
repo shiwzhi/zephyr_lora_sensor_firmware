@@ -1,0 +1,85 @@
+/ {
+	chosen {
+		zephyr,console = &usb_serial;
+		zephyr,shell-uart = &usb_serial;
+		zephyr,display = &ssd1306_ssd1306_128x64;
+	};
+
+	aliases {
+        scd4x = &scd40;
+        display = &ssd1306_ssd1306_128x64;
+        bme280 = &bme280;
+		pms-uart = &uart0;
+	};
+
+    sensor_regulator: sensor_regulator {
+        compatible = "regulator-fixed";
+        regulator-name = "sensor_regulator";
+        enable-gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
+        regulator-boot-on;
+    };
+};
+
+&usb_serial {
+	/* requires resoldering of resistors on the board */
+	status = "okay";
+};
+
+&uart0 {
+	status = "okay";
+	current-speed = <9600>;
+	pinctrl-0 = <&uart0_default>;
+	pinctrl-names = "default";
+};
+
+&uart0_default {
+	group1 {
+		pinmux = <UART0_TX_GPIO1>;
+		output-high;
+	};
+	group2 {
+		pinmux = <UART0_RX_GPIO0>;
+	};
+};
+
+&i2c0 {
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_FAST>;
+
+    ssd1306_ssd1306_128x64: ssd1306@3c {
+		ready-time-ms = <500>;
+		status = "okay";
+		compatible = "solomon,ssd1306fb";
+		reg = <0x3c>;
+		width = <128>;
+		height = <64>;
+		segment-offset = <0>;
+		page-offset = <0>;
+		display-offset = <0>;
+		multiplex-ratio = <63>;
+		segment-remap;
+		com-invdir;
+		prechargep = <0x22>;
+		inversion-on;
+	};
+
+    scd40: scd40@62 {
+        status = "okay";
+        reg = <0x62>;
+        compatible = "sensirion,scd40";
+    };
+
+    bme280: bme280@76 {
+		compatible = "bosch,bme280";
+		reg = <0x76>;
+	};
+};
+
+&i2c0_default {
+    group1 {
+        pinmux = <I2C0_SDA_GPIO4>,
+                <I2C0_SCL_GPIO5>;
+        drive-open-drain;
+        output-high;
+    };
+};

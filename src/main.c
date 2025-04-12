@@ -1,326 +1,72 @@
-/*
- * Copyright (c) 2012-2014 Wind River Systems, Inc.
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
-#include <stdio.h>
-#include <cJSON.h>
-
 #include <zephyr/kernel.h>
-#include <zephyr/device.h>
-#include <zephyr/drivers/sensor.h>
-#include <zephyr/drivers/uart.h>
-#include <zephyr/display/cfb.h>
-#include <zephyr/drivers/lora.h>
+#include <zephyr/logging/log.h>
 #include <zephyr/drivers/hwinfo.h>
 
-#include <zephyr/lorawan/lorawan.h>
+#include "cayenne_lpp.h"
+#include "sensors.h"
+#include "lora.h"
 
-#define LOG_LEVEL CONFIG_LOG_DEFAULT_LEVEL
-#include <zephyr/logging/log.h>
+LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 
-LOG_MODULE_REGISTER(main);
-
-#define PMS_DEVICE_LABEL "pms_device"
-#define SHT3X_LABEL "sht3x_sensor"
-#define SSD1306_DEVICE_LABEL "ssd1306_display"
-#define CM1106_DEVICE_LABEL "cm1106_co2"
-#define LORA_DEVICE_LABEL "lora_node"
-
-#define STACKSIZE 1024
-#define PRIORITY 7
-
-uint16_t g_pm1, g_pm25, g_pm10, g_co2;
-float g_temp, g_hum;
-
-uint8_t cm1106_rx_index = 0;
-uint8_t cm1106_rx_buffer[64];
-void cm1106_serial_cb(const struct device *dev, void *user_data)
-{
-	uint8_t c;
-
-	if (!uart_irq_update(dev))
-	{
-		return;
-	}
-
-	if (!uart_irq_rx_ready(dev))
-	{
-		return;
-	}
-
-	while (uart_fifo_read(dev, &c, 1) == 1)
-	{
-		cm1106_rx_buffer[cm1106_rx_index] = c;
-		cm1106_rx_index++;
-	}
-}
-
-void cm1106_thread(void *, void *, void *)
-{
-	const struct device *cm1106_uart_dev = device_get_binding(CM1106_DEVICE_LABEL);
-	if (cm1106_uart_dev == NULL)
-	{
-		printf("CM1106 not found\r\n");
-		return;
-	}
-
-	if (!device_is_ready(cm1106_uart_dev))
-	{
-		printk("CM1106 UART device not found!");
-		return;
-	}
-
-	int ret = uart_irq_callback_user_data_set(cm1106_uart_dev, cm1106_serial_cb, NULL);
-	if (ret < 0)
-	{
-		if (ret == -ENOTSUP)
-		{
-			printk("Interrupt-driven UART API support not enabled\n");
-		}
-		else if (ret == -ENOSYS)
-		{
-			printk("UART device does not support interrupt-driven API\n");
-		}
-		else
-		{
-			printk("Error setting UART callback: %d\n", ret);
-		}
-		return;
-	}
-	uart_irq_rx_enable(cm1106_uart_dev);
-
-	uint8_t read_co2_cmd[4] = {0x11, 0x01, 0x01, 0xed};
-	while (1)
-	{
-		cm1106_rx_index = 0;
-		for (int i = 0; i < 4; i++)
-		{
-			uart_poll_out(cm1106_uart_dev, read_co2_cmd[i]);
-		}
-		k_msleep(5000);
-		if (cm1106_rx_index == 8)
-		{
-			g_co2 = cm1106_rx_buffer[3] * 256 + cm1106_rx_buffer[4];
-			printf("CO2: %d\r\n", g_co2);
-		}
-	}
-}
-
-K_THREAD_DEFINE(cm1106_tid, STACKSIZE,
-				cm1106_thread, NULL, NULL, NULL,
-				PRIORITY, 0, 5000);
-
-void sht3x_thread(void *, void *, void *)
-{
-	const struct device *sht_dev = device_get_binding(SHT3X_LABEL);
-	if (sht_dev == NULL)
-	{
-		printf("sht3x not found \r\n");
-		return;
-	}
-
-	if (!device_is_ready(sht_dev))
-	{
-		printf("Device %s is not ready\n", sht_dev->name);
-		return;
-	}
-
-	struct sensor_value temp, hum;
-
-	while (1)
-	{
-		int rc = sensor_sample_fetch(sht_dev);
-		if (rc == 0)
-		{
-			rc = sensor_channel_get(sht_dev, SENSOR_CHAN_AMBIENT_TEMP,
-									&temp);
-		}
-		if (rc == 0)
-		{
-			rc = sensor_channel_get(sht_dev, SENSOR_CHAN_HUMIDITY,
-									&hum);
-		}
-		if (rc != 0)
-		{
-			printf("SHT3XD: failed: %d\n", rc);
-			continue;
-		}
-		g_temp = sensor_value_to_double(&temp);
-		g_hum = sensor_value_to_double(&hum);
-		printf("SHT3XD: %.2f Cel ; %0.2f %%RH\n",
-			   (double)g_temp,
-			   (double)g_hum);
-		k_msleep(5000);
-	}
-}
-
-K_THREAD_DEFINE(sht3x_tid, STACKSIZE,
-				sht3x_thread, NULL, NULL, NULL,
-				PRIORITY, 0, 5000);
-
-void pms_thread(void *, void *, void *)
-{
-	const struct device *pms_dev = device_get_binding(PMS_DEVICE_LABEL);
-	if (pms_dev == NULL)
-	{
-		printf("pms not found\r\n");
-		return;
-	}
-
-	if (!device_is_ready(pms_dev))
-	{
-		printf("Device %s is not ready\n", pms_dev->name);
-		return;
-	}
-
-	while (1)
-	{
-		int ret = sensor_sample_fetch(pms_dev);
-		if (ret == 0)
-		{
-			struct sensor_value pm1, pm25, pm10;
-			ret = sensor_channel_get(pms_dev, SENSOR_CHAN_PM_1_0, &pm1);
-			if (ret == 0)
-				ret = sensor_channel_get(pms_dev, SENSOR_CHAN_PM_2_5, &pm25);
-			if (ret == 0)
-				ret = sensor_channel_get(pms_dev, SENSOR_CHAN_PM_10, &pm10);
-			if (ret != 0)
-			{
-				printf("pms: failed: %d\n", ret);
-			}
-			else
-			{
-				g_pm1 = sensor_value_to_double(&pm1);
-				g_pm25 = sensor_value_to_double(&pm25);
-				g_pm10 = sensor_value_to_double(&pm10);
-				printf("pm1: %d pm25: %d pm10: %d\r\n", g_pm1, g_pm25, g_pm10);
-			}
-		}
-		else
-		{
-			printf("pms sample fetch return %d\r\n", ret);
-		}
-		k_msleep(5000);
-	}
-}
-
-K_THREAD_DEFINE(pms_tid, STACKSIZE,
-				pms_thread, NULL, NULL, NULL,
-				PRIORITY, 0, 5000);
-
-void ssd1306_display_thread(void *, void *, void *)
-{
-	const struct device *dev;
-
-	dev = device_get_binding(SSD1306_DEVICE_LABEL);
-	if (!device_is_ready(dev))
-	{
-		printf("Device %s not ready\n", dev->name);
-		return;
-	}
-
-	if (display_set_pixel_format(dev, PIXEL_FORMAT_MONO10) != 0)
-	{
-		if (display_set_pixel_format(dev, PIXEL_FORMAT_MONO01) != 0)
-		{
-			printf("Failed to set required pixel format");
-			return;
-		}
-	}
-
-	printf("Initialized %s\n", dev->name);
-
-	if (cfb_framebuffer_init(dev))
-	{
-		printf("Framebuffer initialization failed!\n");
-		return;
-	}
-
-	display_blanking_off(dev);
-
-	cfb_framebuffer_set_font(dev, 0);
-	cfb_framebuffer_clear(dev, true);
-
-	while (1)
-	{
-		cfb_framebuffer_clear(dev, false);
-
-		char temp_hum_str[30];
-		sprintf(temp_hum_str, "%.1fC %.1f%%", (double)g_temp, (double)g_hum);
-		cfb_print(dev, temp_hum_str, 0, 0);
-
-		char co2_str[20];
-		sprintf(co2_str, "CO2: %d", g_co2);
-		cfb_print(dev, co2_str, 0, 16);
-
-		char pm_str[30];
-		sprintf(pm_str, "%d %d %d", g_pm1, g_pm25, g_pm10);
-		cfb_print(dev, pm_str, 0, 32);
-
-		cfb_framebuffer_finalize(dev);
-		k_msleep(5000);
-	}
-}
-
-K_THREAD_DEFINE(ssd1306_tid, STACKSIZE,
-				ssd1306_display_thread, NULL, NULL, NULL,
-				PRIORITY, 0, 5000);
+static uint8_t deveui[8];
+static uint8_t joineui[8];
+static uint8_t appkey[16];
 
 int main(void)
 {
-	k_msleep(2000);
-	const struct device *lora_dev;
-	struct lorawan_join_config join_cfg;
-	uint8_t dev_eui[8];
-	uint8_t join_eui[8];
-	uint8_t app_key[16];
-	int ret;
+	k_msleep(5000);
 
-	lora_dev = device_get_binding("lora_node");
-	if (!device_is_ready(lora_dev))
-	{
-		LOG_ERR("%s: device not ready.", lora_dev->name);
-		return 0;
-	}
+	memset(deveui, 0, 8);
+	memset(joineui, 0, 8);
+	memset(appkey, 0, 8);
+	hwinfo_get_device_id(deveui, 8);
+	hwinfo_get_device_id(appkey, 16);
+	LOG_HEXDUMP_DBG(deveui, 8, "DEVEUI:");
+	LOG_HEXDUMP_DBG(joineui, 8, "JOINEUI:");
+	LOG_HEXDUMP_DBG(appkey, 16, "APPKEY:");
+	lora_init(deveui, joineui, appkey);
 
-	ret = lorawan_start();
-	if (ret < 0)
-	{
-		LOG_ERR("lorawan_start failed: %d", ret);
-		return 0;
-	}
-
-	memset(dev_eui, 0, 8);
-	memset(join_eui, 0, 8);
-	memset(app_key, 0, 16);
-
-	hwinfo_get_device_id(dev_eui, 8);
-	hwinfo_get_device_id(app_key, 16);
-
-	LOG_HEXDUMP_INF(dev_eui, 8, "DEVEUI: ");
-	LOG_HEXDUMP_INF(join_eui, 8, "JOINEUI: ");
-	LOG_HEXDUMP_INF(app_key, 16, "APPKEY: ");
-
-	join_cfg.mode = LORAWAN_ACT_OTAA;
-	join_cfg.dev_eui = dev_eui;
-	join_cfg.otaa.join_eui = join_eui;
-	join_cfg.otaa.app_key = app_key;
-	join_cfg.otaa.nwk_key = app_key;
-	join_cfg.otaa.dev_nonce = 0u;
-
-	ret = lorawan_join(&join_cfg);
-	if (ret < 0)
-	{
-		LOG_ERR("lorawan_join_network failed: %d", ret);
-		return 0;
-	}
+	cayenne_lpp_t lpp = {0};
 
 	while (1)
 	{
-		// printk("Hello World! %s\n", CONFIG_BOARD_TARGET);
-		k_sleep(K_SECONDS(2));
+		k_msleep(60 * 1000);
+
+		cayenne_lpp_reset(&lpp);
+		uint16_t _pm1, _pm25, _pm10;
+		if (0 == sensor_get_pm1(&_pm1))
+		{
+			sensor_get_pm25(&_pm25);
+			sensor_get_pm10(&_pm10);
+
+			float pm1 = _pm1 / 100.0f;
+			float pm25 = _pm25 / 100.0f;
+			float pm10 = _pm10 / 100.0f;
+
+			cayenne_lpp_add_analog_output(&lpp, 0, pm1);
+			cayenne_lpp_add_analog_output(&lpp, 1, pm25);
+			cayenne_lpp_add_analog_output(&lpp, 2, pm10);
+		}
+
+		uint16_t co2;
+		if (sensor_get_co2(&co2) == 0)
+		{
+			cayenne_lpp_add_analog_output(&lpp, 3, co2 / 100.0f);
+		}
+
+		float temp;
+		if (sensor_get_temp(&temp) == 0)
+		{
+			cayenne_lpp_add_temperature(&lpp, 0, temp);
+		}
+
+		float hum;
+		if (sensor_get_hum(&hum) == 0)
+		{
+			cayenne_lpp_add_relative_humidity(&lpp, 0, hum);
+		}
+
+		lora_send(lpp.buffer, lpp.cursor);
 	}
 
 	return 0;

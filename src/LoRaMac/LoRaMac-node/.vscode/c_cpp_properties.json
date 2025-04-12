@@ -1,0 +1,26 @@
+{
+    "configurations": [
+        {
+            "name": "ARM",
+            "compileCommands": [
+                "${workspaceRoot}/build/compile_commands.json"
+            ],
+            "intelliSenseMode": "clang-x64",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}"
+                ]
+            },
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "includePath": [
+                "${default}",
+                "${workspaceFolder}/src/boards",
+                "${workspaceFolder}/src/system",
+                "${workspaceFolder}/src/radio"
+            ]
+        }
+    ],
+    "version": 4
+}

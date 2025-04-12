@@ -1,0 +1,56 @@
+/ {
+    chosen {
+		zephyr,console = &usart2;
+		zephyr,shell-uart = &usart2;
+    };
+
+	aliases {
+		pms-uart = &usart1;
+		sht3x-sensor = &sht3x;
+	};
+
+};
+
+&usart1 {
+	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
+	current-speed = <9600>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&usart2 {
+	pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
+	current-speed = <115200>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&i2c1 {
+	pinctrl-0 = < &i2c1_scl_pb6 &i2c1_sda_pb7 >;
+	status = "okay";
+	pinctrl-names = "default";
+	clock-frequency = <I2C_BITRATE_FAST>;
+
+	sht3x: sht3xd@44 {
+		compatible = "sensirion,sht3xd";
+		reg = <0x44>;
+	};
+};
+
+&spi1 {
+	clock-frequency = <DT_FREQ_M(15)>;
+	status = "okay";
+	cs-gpios = <&gpioa 4 GPIO_ACTIVE_LOW>;
+	pinctrl-0 = <&spi1_sck_master_pa5
+		     &spi1_miso_master_pa6 &spi1_mosi_master_pa7>;
+
+	lora: lora@0 {
+		status = "okay";
+		compatible = "semtech,sx1276";
+		reg = <0x0>;
+		spi-max-frequency = <DT_FREQ_M(15)>;
+		reset-gpios = <&gpioa 1 GPIO_ACTIVE_LOW>;
+		dio-gpios = <&gpiob 10 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+        power-amplifier-output = "pa-boost";
+	};
+};
