@@ -3,21 +3,14 @@
 #include "board.h"
 #include <stdio.h>
 #include <string.h>
+#include <zephyr/drivers/hwinfo.h>
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(LORA, LOG_LEVEL_DBG);
 
 #define LORA_REGION LORAMAC_REGION_EU433
 #define LORA_ADR true
-#define JOIN_DR DR_3
-#define MaxERROR 100
-
-#define PRINTFLN(...)        \
-    do                       \
-    {                        \
-        printf(__VA_ARGS__); \
-        puts("");            \
-    } while (0)
-
-static bool is_joined = false;
-static bool is_init = false;
+#define MaxERROR 150
 
 static LoRaMacCallback_t LoRaMacCallbacks;
 static LoRaMacPrimitives_t LoRaMacPrimitives;
@@ -31,7 +24,7 @@ static uint8_t _deveui[8];
 static uint8_t _joineui[8];
 static uint8_t _appkey[16];
 
-static uint16_t tx_counter = 0;
+bool is_joined = false;
 
 void BoardGetUniqueId(uint8_t *id)
 {
@@ -40,18 +33,21 @@ void BoardGetUniqueId(uint8_t *id)
 
 static void McpsConfirm(McpsConfirm_t *mcpsConfirm)
 {
-    PRINTFLN("McpsConfirm");
+    printf("McpsConfirm");
 }
 
 static void McpsIndication(McpsIndication_t *mcpsIndication)
 {
-    PRINTFLN("McpsIndication");
-    tx_counter = 0;
+    printf("McpsIndication");
+}
+
+static void MlmeIndication(MlmeIndication_t *mlmeIndication)
+{
 }
 
 static void MlmeConfirm(MlmeConfirm_t *mlmeConfirm)
 {
-    PRINTFLN("MlmeConfirm Status %d", mlmeConfirm->Status);
+    printf("MlmeConfirm Status %d", mlmeConfirm->Status);
 
     if (mlmeConfirm->Status == LORAMAC_EVENT_INFO_STATUS_OK)
     {
@@ -59,14 +55,11 @@ static void MlmeConfirm(MlmeConfirm_t *mlmeConfirm)
         {
         case MLME_JOIN:
         {
-            PRINTFLN("Joined network");
             is_joined = true;
             break;
         }
         case MLME_LINK_CHECK:
         {
-            // Check DemodMargin
-            // Check NbGateways
             break;
         }
         default:
@@ -75,19 +68,45 @@ static void MlmeConfirm(MlmeConfirm_t *mlmeConfirm)
     }
 }
 
-static void MlmeIndication(MlmeIndication_t *mlmeIndication)
-{
-}
-
 static void OnMacProcessNotify(void)
 {
     LoRaMacProcess();
 }
 
-void lora_join()
+int lora_join()
 {
-    LoRaMacStop();
-    is_joined = false;
+    mlmeReq.Type = MLME_JOIN;
+    mlmeReq.Req.Join.Datarate = DR_3;
+
+    status = LoRaMacMlmeRequest(&mlmeReq);
+
+    if (status != LORAMAC_STATUS_OK)
+    {
+        printf("Join failed:%d", status);
+        return -1;
+    }
+
+    return 0;
+}
+
+int lora_init()
+{
+    LoRaMacPrimitives.MacMcpsConfirm = McpsConfirm;
+    LoRaMacPrimitives.MacMcpsIndication = McpsIndication;
+    LoRaMacPrimitives.MacMlmeConfirm = MlmeConfirm;
+    LoRaMacPrimitives.MacMlmeIndication = MlmeIndication;
+    LoRaMacCallbacks.GetBatteryLevel = NULL;
+    LoRaMacCallbacks.GetTemperatureLevel = NULL;
+    LoRaMacCallbacks.NvmDataChange = NULL;
+    LoRaMacCallbacks.MacProcessNotify = OnMacProcessNotify;
+
+    status = LoRaMacInitialization(&LoRaMacPrimitives, &LoRaMacCallbacks, LORA_REGION);
+
+    if (status != LORAMAC_STATUS_OK)
+    {
+        printf("Status: %d", status);
+        return -1;
+    }
 
     mibReq.Type = MIB_DEV_EUI;
     mibReq.Param.DevEui = _deveui;
@@ -122,99 +141,56 @@ void lora_join()
 
     LoRaMacStart();
 
-    mlmeReq.Type = MLME_JOIN;
-    mlmeReq.Req.Join.Datarate = JOIN_DR;
-    status = LoRaMacMlmeRequest(&mlmeReq);
-
-    if (status != LORAMAC_STATUS_OK)
-    {
-        PRINTFLN("Join failed:%d", status);
-    }
-}
-
-int lora_init(uint8_t deveui[8], uint8_t joineui[8], uint8_t appkey[16])
-{
-    memcpy(_deveui, deveui, 8);
-    memcpy(_joineui, joineui, 8);
-    memcpy(_appkey, appkey, 16);
-
-    PRINTFLN("DEVEUI:");
-    for (int i = 0; i < 8; i++)
-    {
-        printf("%02x", _deveui[i]);
-    }
-    PRINTFLN("");
-
-    PRINTFLN("APPKEY:");
-    for (int i = 0; i < 16; i++)
-    {
-        printf("%02x", _appkey[i]);
-    }
-    PRINTFLN("");
-
-    if (!is_init)
-    {
-        LoRaMacPrimitives.MacMcpsConfirm = McpsConfirm;
-        LoRaMacPrimitives.MacMcpsIndication = McpsIndication;
-        LoRaMacPrimitives.MacMlmeConfirm = MlmeConfirm;
-        LoRaMacPrimitives.MacMlmeIndication = MlmeIndication;
-        LoRaMacCallbacks.GetBatteryLevel = NULL;
-        LoRaMacCallbacks.GetTemperatureLevel = NULL;
-        LoRaMacCallbacks.NvmDataChange = NULL;
-        LoRaMacCallbacks.MacProcessNotify = OnMacProcessNotify;
-
-        status = LoRaMacInitialization(&LoRaMacPrimitives, &LoRaMacCallbacks, LORA_REGION);
-
-        if (status != LORAMAC_STATUS_OK)
-        {
-            PRINTFLN("Status: %d", status);
-            return -1;
-        }
-        is_init = true;
-    }
-
-    lora_join();
-
     return 0;
 }
 
+static uint8_t tx_buffer[300];
+static uint8_t tx_len = 0;
+static bool is_tx = false;
+
+void lora_thread(void *, void *, void *)
+{
+    memset(_deveui, 0, 8);
+    memset(_joineui, 0, 8);
+    memset(_appkey, 0, 8);
+
+    hwinfo_get_device_id(_appkey, 16);
+    memcpy(_deveui, _appkey + 8, 8);
+
+    LOG_HEXDUMP_DBG(_deveui, 8, "DEVEUI:");
+    LOG_HEXDUMP_DBG(_joineui, 8, "JOINEUI:");
+    LOG_HEXDUMP_DBG(_appkey, 16, "APPKEY:");
+
+    lora_init();
+
+    while (!is_joined)
+    {
+        lora_join();
+        k_msleep(10 * 1000);
+    }
+
+    while (1)
+    {
+        if (is_tx)
+        {
+            mcpsReq.Type = MCPS_UNCONFIRMED;
+            mcpsReq.Req.Unconfirmed.fPort = 1;
+            mcpsReq.Req.Unconfirmed.fBuffer = tx_buffer;
+            mcpsReq.Req.Unconfirmed.fBufferSize = tx_len;
+            status = LoRaMacMcpsRequest(&mcpsReq);
+            is_tx = false;
+        }
+        k_msleep(10 * 1000);
+    }
+}
+
+K_THREAD_DEFINE(lora_tid, 2048,
+                lora_thread, NULL, NULL, NULL,
+                7, 0, 0);
+
 int lora_send(uint8_t *buffer, uint8_t len)
 {
-    if (!is_joined)
-    {
-        PRINTFLN("Not joined");
-
-        lora_join();
-        return -1;
-    }
-
-    tx_counter++;
-    if (tx_counter < 5)
-    {
-        mcpsReq.Type = MCPS_UNCONFIRMED;
-        mcpsReq.Req.Unconfirmed.fPort = 1;
-        mcpsReq.Req.Unconfirmed.fBuffer = buffer;
-        mcpsReq.Req.Unconfirmed.fBufferSize = len;
-        status = LoRaMacMcpsRequest(&mcpsReq);
-    }
-    else
-    {
-        mcpsReq.Type = MCPS_CONFIRMED;
-        mcpsReq.Req.Confirmed.fPort = 1;
-        mcpsReq.Req.Confirmed.fBuffer = buffer;
-        mcpsReq.Req.Confirmed.fBufferSize = len;
-        status = LoRaMacMcpsRequest(&mcpsReq);
-    }
-    if (tx_counter > 10)
-    {
-        tx_counter = 0;
-        lora_join();
-    }
-
-    if (status != LORAMAC_STATUS_OK)
-    {
-        PRINTFLN("Send uplink failed");
-        return -1;
-    }
+    memcpy(tx_buffer, buffer, len);
+    is_tx = true;
     return 0;
 }
