@@ -17,9 +17,11 @@ target_sources(app PRIVATE
     src/drivers/sensors/sht3x.c
     src/drivers/sensors/scd4x.c
     src/drivers/sensors/bme280.c
+    src/drivers/sensors/sps30.c
 
     src/drivers/cayenne_lpp.c
     src/drivers/display.c
+    src/drivers/led.c
 )
 target_include_directories(app PRIVATE
     src/drivers/
@@ -27,5 +29,5 @@ target_include_directories(app PRIVATE
     ./src/
 )
 
-add_subdirectory(src/LoRaMac)
-target_link_libraries(app PRIVATE loramac)
+# add_subdirectory(src/LoRaMac)
+# target_link_libraries(app PRIVATE loramac)
