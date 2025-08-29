@@ -2,7 +2,7 @@
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/logging/log.h>
 
-LOG_MODULE_REGISTER(bme280, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(bme280, LOG_LEVEL_ERR);
 
 int bme280_get_data(bme280_data_t *bme280_data)
 {

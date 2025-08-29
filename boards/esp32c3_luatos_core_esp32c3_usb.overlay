@@ -3,10 +3,55 @@
     };
 
     aliases {
-        cm1106-uart = &uart0;
-        lora-radio = &lora;
+        pms-uart = &uart0;
+        lora0 = &lora;
+		systemled = &led0;
+		scd4x = &scd40;
+		bme280 = &bme280;
 	};
 
+	leds {
+		compatible = "gpio-leds";
+
+		led0: led_2 {
+			gpios = <&gpio0 12 GPIO_ACTIVE_HIGH>;
+			label = "White LED";
+		};
+
+		led1: led_1 {
+			gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+			label = "Green LED";
+		};
+	};
+};
+
+&i2c0_default {
+	group1 {
+		pinmux = <I2C0_SDA_GPIO1>,
+				<I2C0_SCL_GPIO0>;
+		bias-pull-up;
+		drive-open-drain;
+		output-high;
+	};
+};
+
+&i2c0 {
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-names = "default";
+
+	scd40: scd40@62 {
+        status = "okay";
+        reg = <0x62>;
+		mode = <1>;
+        compatible = "sensirion,scd41";
+    };
+
+	bme280: bme280@76 {
+		compatible = "bosch,bme280";
+		reg = <0x76>;
+	};
 };
 
 &uart0 {
@@ -45,8 +90,7 @@
 	pinctrl-0 = <&spim2_default>;
 	pinctrl-names = "default";
     cs-gpios = <&gpio0 6 GPIO_ACTIVE_LOW>;
-    clock-frequency = <DT_FREQ_M(2)>;
-
+    clock-frequency = <DT_FREQ_M(1)>;
 
     lora: lora@0 {
 		compatible = "semtech,sx1276";

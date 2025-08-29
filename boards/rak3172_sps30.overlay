@@ -30,13 +30,8 @@
 		lora0 = &lora;
 		scd4x = &scd40;
 		bme280 = &bme280;
-		pms-uart = &usart1;
-		watchdog0 = &iwdg;
+		sps30 = &sps30;
 	};
-};
-
-&iwdg {
-	status = "okay";
 };
 
 &cpu0 {
@@ -89,4 +84,10 @@
 		compatible = "bosch,bme280";
 		reg = <0x76>;
 	};
+
+	sps30: sps30@69{
+        compatible = "i2c-device";
+        reg = < 0x69 >;
+        label = "sps30";
+    };
 };

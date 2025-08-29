@@ -14,7 +14,7 @@ int sht3x_get_temp_hum(sht3x_data_t *data)
 #if DT_HAS_ALIAS(sht3x_sensor)
     sht_dev = DEVICE_DT_GET(DT_ALIAS(sht3x_sensor));
 #else
-    LOG_ERR("No sht3x-sensor alias found");
+    LOG_DBG("No sht3x-sensor alias found");
     return -1;
 #endif
     if (!device_is_ready(sht_dev))

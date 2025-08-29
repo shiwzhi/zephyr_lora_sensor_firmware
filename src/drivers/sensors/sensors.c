@@ -4,6 +4,7 @@
 #include "pms.h"
 #include "bme280.h"
 #include "cm1106.h"
+#include "sps30.h"
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(Sensors, LOG_LEVEL_ERR);
@@ -11,6 +12,7 @@ LOG_MODULE_REGISTER(Sensors, LOG_LEVEL_ERR);
 static scd4x_data_t scd4xdata;
 static sht3x_data_t sht3xdata;
 static pms_data_t pmsdata;
+static sps30data_t sps30data;
 
 int sensor_get_co2(uint16_t *co2)
 {
@@ -72,7 +74,12 @@ int sensor_get_pm1(uint16_t *pm1)
         *pm1 = pmsdata.pm1;
         return 0;
     }
-    LOG_ERR("Un able to get pms data");
+
+    if (0 == sps30_get_data(&sps30data))
+    {
+        *pm1 = (uint16_t)sps30data.pm1;
+        return 0;
+    }
     return -1;
 }
 
@@ -83,7 +90,12 @@ int sensor_get_pm25(uint16_t *pm25)
         *pm25 = pmsdata.pm25;
         return 0;
     }
-    LOG_ERR("Un able to get pms data");
+
+    if (0 == sps30_get_data(&sps30data))
+    {
+        *pm25 = (uint16_t)sps30data.pm25;
+        return 0;
+    }
     return -1;
 }
 
@@ -94,6 +106,11 @@ int sensor_get_pm10(uint16_t *pm10)
         *pm10 = pmsdata.pm10;
         return 0;
     }
-    LOG_ERR("Un able to get pms data");
+
+    if (0 == sps30_get_data(&sps30data))
+    {
+        *pm10 = (uint16_t)sps30data.pm10;
+        return 0;
+    }
     return -1;
 }

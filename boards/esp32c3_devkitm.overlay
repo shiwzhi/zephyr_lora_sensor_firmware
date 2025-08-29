@@ -63,10 +63,11 @@
 		inversion-on;
 	};
 
-    scd40: scd40@62 {
+	scd40: scd40@62 {
         status = "okay";
         reg = <0x62>;
-        compatible = "sensirion,scd40";
+		mode = <1>;
+        compatible = "sensirion,scd41";
     };
 
     bme280: bme280@76 {

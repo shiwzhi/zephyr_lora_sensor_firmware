@@ -1,196 +1,90 @@
-#include "lora.h"
-#include "LoRaMac.h"
-#include "board.h"
 #include <stdio.h>
 #include <string.h>
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/lorawan/lorawan.h>
+#include "lora.h"
+#include "autoconf.h"
+#include <stdint.h>
+#include "led.h"
 
 LOG_MODULE_REGISTER(LORA, LOG_LEVEL_DBG);
 
-#define LORA_REGION LORAMAC_REGION_EU433
-#define LORA_ADR true
-#define MaxERROR 150
-
-static LoRaMacCallback_t LoRaMacCallbacks;
-static LoRaMacPrimitives_t LoRaMacPrimitives;
-static LoRaMacStatus_t status;
-
-static MibRequestConfirm_t mibReq;
-static MlmeReq_t mlmeReq;
-static McpsReq_t mcpsReq;
-
-static uint8_t _deveui[8];
-static uint8_t _joineui[8];
-static uint8_t _appkey[16];
-
-bool is_joined = false;
-
-void BoardGetUniqueId(uint8_t *id)
-{
-    /* Do not change the default value */
-}
-
-static void McpsConfirm(McpsConfirm_t *mcpsConfirm)
-{
-    printf("McpsConfirm");
-}
-
-static void McpsIndication(McpsIndication_t *mcpsIndication)
-{
-    printf("McpsIndication");
-}
-
-static void MlmeIndication(MlmeIndication_t *mlmeIndication)
-{
-}
-
-static void MlmeConfirm(MlmeConfirm_t *mlmeConfirm)
-{
-    printf("MlmeConfirm Status %d", mlmeConfirm->Status);
-
-    if (mlmeConfirm->Status == LORAMAC_EVENT_INFO_STATUS_OK)
-    {
-        switch (mlmeConfirm->MlmeRequest)
-        {
-        case MLME_JOIN:
-        {
-            is_joined = true;
-            break;
-        }
-        case MLME_LINK_CHECK:
-        {
-            break;
-        }
-        default:
-            break;
-        }
-    }
-}
-
-static void OnMacProcessNotify(void)
-{
-    LoRaMacProcess();
-}
+const struct device *lora_dev;
+struct lorawan_join_config join_cfg;
+uint8_t dev_eui[8];
+uint8_t join_eui[8];
+uint8_t app_key[16];
+static int ret;
 
 int lora_join()
 {
-    mlmeReq.Type = MLME_JOIN;
-    mlmeReq.Req.Join.Datarate = DR_3;
-
-    status = LoRaMacMlmeRequest(&mlmeReq);
-
-    if (status != LORAMAC_STATUS_OK)
+    if (hwinfo_get_device_eui64(dev_eui) == 0)
     {
-        printf("Join failed:%d", status);
-        return -1;
+        memcpy(app_key, dev_eui, 8);
+    }
+    else
+    {
+        hwinfo_get_device_id(app_key, 16);
+        memcpy(dev_eui, app_key, 8);
     }
 
-    return 0;
+    LOG_HEXDUMP_DBG(dev_eui, 8, "DEVEUI");
+    LOG_HEXDUMP_DBG(app_key, 16, "APPKEY");
+
+    join_cfg.mode = LORAWAN_ACT_OTAA;
+    join_cfg.dev_eui = dev_eui;
+    join_cfg.otaa.join_eui = join_eui;
+    join_cfg.otaa.app_key = app_key;
+    join_cfg.otaa.nwk_key = app_key;
+    join_cfg.otaa.dev_nonce = 0u;
+
+    lorawan_set_datarate(LORAWAN_DR_3);
+
+    LOG_INF("Joining network over OTAA");
+    ret = lorawan_join(&join_cfg);
+    if (ret == 0)
+    {
+        lorawan_enable_adr(true);
+    }
+    return ret;
 }
+
+static void dl_callback(uint8_t port, uint8_t flags, int16_t rssi, int8_t snr, uint8_t len,
+                        const uint8_t *hex_data)
+{
+    LOG_INF("Port %d, Pending %d, RSSI %ddB, SNR %ddBm, Time %d", port,
+            flags & LORAWAN_DATA_PENDING, rssi, snr, !!(flags & LORAWAN_TIME_UPDATED));
+    if (hex_data)
+    {
+        LOG_HEXDUMP_INF(hex_data, len, "Payload: ");
+    }
+}
+struct lorawan_downlink_cb downlink_cb = {
+    .port = LW_RECV_PORT_ANY,
+    .cb = dl_callback};
 
 int lora_init()
 {
-    LoRaMacPrimitives.MacMcpsConfirm = McpsConfirm;
-    LoRaMacPrimitives.MacMcpsIndication = McpsIndication;
-    LoRaMacPrimitives.MacMlmeConfirm = MlmeConfirm;
-    LoRaMacPrimitives.MacMlmeIndication = MlmeIndication;
-    LoRaMacCallbacks.GetBatteryLevel = NULL;
-    LoRaMacCallbacks.GetTemperatureLevel = NULL;
-    LoRaMacCallbacks.NvmDataChange = NULL;
-    LoRaMacCallbacks.MacProcessNotify = OnMacProcessNotify;
-
-    status = LoRaMacInitialization(&LoRaMacPrimitives, &LoRaMacCallbacks, LORA_REGION);
-
-    if (status != LORAMAC_STATUS_OK)
+    lora_dev = DEVICE_DT_GET(DT_ALIAS(lora0));
+    if (!device_is_ready(lora_dev))
     {
-        printf("Status: %d", status);
+        LOG_ERR("%s: device not ready.", lora_dev->name);
+        return -1;
+    }
+    ret = lorawan_start();
+    if (ret < 0)
+    {
+        LOG_ERR("lorawan_start failed: %d", ret);
         return -1;
     }
 
-    mibReq.Type = MIB_DEV_EUI;
-    mibReq.Param.DevEui = _deveui;
-    LoRaMacMibSetRequestConfirm(&mibReq);
-
-    mibReq.Type = MIB_JOIN_EUI;
-    mibReq.Param.JoinEui = _joineui;
-    LoRaMacMibSetRequestConfirm(&mibReq);
-
-    mibReq.Type = MIB_NWK_KEY;
-    mibReq.Param.NwkKey = _appkey;
-    LoRaMacMibSetRequestConfirm(&mibReq);
-
-    mibReq.Type = MIB_APP_KEY;
-    mibReq.Param.AppKey = _appkey;
-    LoRaMacMibSetRequestConfirm(&mibReq);
-
-    mibReq.Type = MIB_PUBLIC_NETWORK;
-    mibReq.Param.EnablePublicNetwork = true;
-    LoRaMacMibSetRequestConfirm(&mibReq);
-
-    mibReq.Type = MIB_ADR;
-    mibReq.Param.AdrEnable = LORA_ADR;
-    LoRaMacMibSetRequestConfirm(&mibReq);
-
-    mibReq.Type = MIB_SYSTEM_MAX_RX_ERROR;
-    mibReq.Param.SystemMaxRxError = MaxERROR;
-    LoRaMacMibSetRequestConfirm(&mibReq);
-
-    mibReq.Type = MIB_NETWORK_ACTIVATION;
-    LoRaMacMibSetRequestConfirm(&mibReq);
-
-    LoRaMacStart();
-
-    return 0;
+    lorawan_register_downlink_callback(&downlink_cb);
+    return ret;
 }
 
-static uint8_t tx_buffer[300];
-static uint8_t tx_len = 0;
-static bool is_tx = false;
-
-void lora_thread(void *, void *, void *)
+int lora_send(uint8_t port, uint8_t *buffer, uint8_t len)
 {
-    memset(_deveui, 0, 8);
-    memset(_joineui, 0, 8);
-    memset(_appkey, 0, 8);
-
-    hwinfo_get_device_id(_appkey, 16);
-    memcpy(_deveui, _appkey + 8, 8);
-
-    LOG_HEXDUMP_DBG(_deveui, 8, "DEVEUI:");
-    LOG_HEXDUMP_DBG(_joineui, 8, "JOINEUI:");
-    LOG_HEXDUMP_DBG(_appkey, 16, "APPKEY:");
-
-    lora_init();
-
-    while (!is_joined)
-    {
-        lora_join();
-        k_msleep(10 * 1000);
-    }
-
-    while (1)
-    {
-        if (is_tx)
-        {
-            mcpsReq.Type = MCPS_UNCONFIRMED;
-            mcpsReq.Req.Unconfirmed.fPort = 1;
-            mcpsReq.Req.Unconfirmed.fBuffer = tx_buffer;
-            mcpsReq.Req.Unconfirmed.fBufferSize = tx_len;
-            status = LoRaMacMcpsRequest(&mcpsReq);
-            is_tx = false;
-        }
-        k_msleep(10 * 1000);
-    }
-}
-
-K_THREAD_DEFINE(lora_tid, 2048,
-                lora_thread, NULL, NULL, NULL,
-                7, 0, 0);
-
-int lora_send(uint8_t *buffer, uint8_t len)
-{
-    memcpy(tx_buffer, buffer, len);
-    is_tx = true;
-    return 0;
+    ret = lorawan_send(port, buffer, len, LORAWAN_MSG_UNCONFIRMED);
+    return ret;
 }

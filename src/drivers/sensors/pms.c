@@ -2,6 +2,8 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
+#include <zephyr/pm/device.h>
+#include <zephyr/pm/policy.h>
 
 LOG_MODULE_REGISTER(PMS, LOG_LEVEL_ERR);
 
@@ -65,6 +67,7 @@ static int pms_init()
     uart_irq_rx_enable(pms_uart_dev);
 
     LOG_DBG("PMS init success");
+
     return 0;
 }
 
@@ -91,7 +94,9 @@ static void pms_uart_out(uint8_t *buffer, uint8_t len)
     {
         uart_poll_out(pms_uart_dev, buffer[i]);
     }
-    k_msleep(2000);
+    pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES);
+    k_msleep(1000);
+    pm_policy_state_lock_put(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES);
     LOG_HEXDUMP_DBG(pms_rx_buf, pms_rx_len, "PMS RX: ");
 }
 

@@ -7,7 +7,15 @@
 	aliases {
 		pms-uart = &usart1;
 		sht3x-sensor = &sht3x;
+		lora0 = &lora;
 	};
+
+};
+
+&flash0 {
+	reg = <0x08000000 DT_SIZE_K(64)>;
+	erase-block-size = <DT_SIZE_K(1)>;
+
 
 };
 
