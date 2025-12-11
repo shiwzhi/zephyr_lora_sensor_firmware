@@ -10,5 +10,6 @@ typedef struct SCD4XData {
 } scd4x_data_t;
 
 int get_scd4x_data(scd4x_data_t* data);
+int set_scd4x_offset(float actual_temp);
 
 #endif

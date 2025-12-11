@@ -11,8 +11,8 @@ static struct sensor_value g_temp, g_hum;
 int sht3x_get_temp_hum(sht3x_data_t *data)
 {
     k_msleep(1000);
-#if DT_HAS_ALIAS(sht3x_sensor)
-    sht_dev = DEVICE_DT_GET(DT_ALIAS(sht3x_sensor));
+#if DT_HAS_ALIAS(sht3x)
+    sht_dev = DEVICE_DT_GET(DT_ALIAS(sht3x));
 #else
     LOG_DBG("No sht3x-sensor alias found");
     return -1;

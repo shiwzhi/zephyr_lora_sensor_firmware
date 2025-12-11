@@ -1,0 +1,158 @@
+#include <zephyr/dt-bindings/pwm/pwm.h>
+
+/ {
+	chosen {
+		zephyr,display = &st7789v_st7789v_tl019fqv01;
+		zephyr,console = &usb_serial;
+		zephyr,shell-uart = &usb_serial;
+	};
+
+	pointer {
+		compatible = "zephyr,lvgl-pointer-input";
+		input = <&cst816s>;
+	};
+
+	aliases {
+		lora0 = &sx1262;
+		scd4x = &scd40;
+		bme280 = &bme280;
+		sps30 = &sps30;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		displayled: led_0 {
+			gpios = <&gpio1 38 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	sensor_regulator: sensor_regulator {
+        compatible = "regulator-fixed";
+        regulator-name = "sensor_regulator";
+        enable-gpios = <&gpio1 38 GPIO_ACTIVE_HIGH>;
+        regulator-boot-on;
+    };
+
+	mipi_dbi_st7789v_tl019fqv01 {
+		status = "okay";
+		compatible = "zephyr,mipi-dbi-spi";
+		spi-dev = <&spi2>;
+		dc-gpios = <&gpio1 36 GPIO_ACTIVE_HIGH>;	/* D9 */
+		reset-gpios = <&gpio1 35 GPIO_ACTIVE_LOW>;	/* D8 */
+		write-only;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		st7789v_st7789v_tl019fqv01: st7789v@1 {
+			status = "okay";
+			compatible = "sitronix,st7789v";
+			mipi-max-frequency = <DT_FREQ_M(30)>;
+			reg = <1>;
+			width = <240>;
+			height = <280>;
+			x-offset = <0>;
+			y-offset = <20>;
+			vcom = <0x19>;
+			gctrl = <0x35>;
+			vrhs = <0x12>;
+			vdvs = <0x20>;
+			mdac = <0x00>;
+			gamma = <0x01>;
+			colmod = <0x05>;
+			lcm = <0x2c>;
+			porch-param = [0c 0c 00 33 33];
+			cmd2en-param = [5a 69 02 01];
+			pwctrl1-param = [a4 a1];
+			pvgam-param = [D0 04 0D 11 13 2B 3F 54 4C 18 0D 0B 1F 23];
+			nvgam-param = [D0 04 0C 11 13 2C 3F 44 51 2F 1F 1F 20 23];
+			ram-param = [00 F0];
+			rgb-param = [CD 08 14];
+			mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
+		};
+	};
+};
+
+&usb_serial {
+	status = "okay";
+};
+
+&i2c0_default {
+	group1 {
+		pinmux = <I2C0_SDA_GPIO1>,
+				<I2C0_SCL_GPIO2>;
+		drive-open-drain;
+		output-high;
+	};
+};
+
+&i2c0 {
+    status = "okay";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-names = "default";
+
+    cst816s: cst816s@15 {
+		compatible = "hynitron,cst816s";
+		status = "okay";
+		reg = <0x15>;
+		irq-gpios = <&gpio1 40 GPIO_ACTIVE_HIGH>;
+		rst-gpios = <&gpio1 39 GPIO_ACTIVE_LOW>;
+	};
+
+	scd40: scd40@62 {
+        status = "okay";
+        reg = <0x62>;
+		mode = <0>;
+        compatible = "sensirion,scd41";
+    };
+
+	bme280: bme280@76 {
+		compatible = "bosch,bme280";
+		reg = <0x76>;
+	};
+
+	sps30: sps30@69{
+        compatible = "i2c-device";
+        reg = < 0x69 >;
+        label = "sps30";
+    };
+};
+
+&spim2_default {
+	group1 {
+		pinmux = <SPIM2_MISO_GPIO13>,
+				<SPIM2_SCLK_GPIO12>;
+	};
+
+	group2 {
+		pinmux = <SPIM2_MOSI_GPIO11>;
+		output-low;
+	};
+};
+
+&spi2 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+	pinctrl-0 = <&spim2_default>;
+	pinctrl-names = "default";
+	clock-frequency = <DT_FREQ_M(30)>;
+	cs-gpios = <&gpio0 10 GPIO_ACTIVE_LOW>,
+			   <&gpio1 37 GPIO_ACTIVE_LOW>;
+
+	sx1262: sx1262@0 {
+		compatible = "semtech,sx1262";
+		reg = <0>;
+		spi-max-frequency = <DT_FREQ_M(1)>;
+		label = "SX1262";
+		reset-gpios = <&gpio0 9 GPIO_ACTIVE_LOW>;
+		busy-gpios = <&gpio0 14 GPIO_ACTIVE_HIGH>;
+		dio1-gpios = <&gpio0 21 GPIO_ACTIVE_HIGH>;
+		dio2-tx-enable;
+		rx-boosted;
+	};
+};
+
+&dma {
+	status = "okay";
+};

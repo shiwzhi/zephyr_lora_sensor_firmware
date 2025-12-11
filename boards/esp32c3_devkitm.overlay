@@ -60,7 +60,6 @@
 		segment-remap;
 		com-invdir;
 		prechargep = <0x22>;
-		inversion-on;
 	};
 
 	scd40: scd40@62 {

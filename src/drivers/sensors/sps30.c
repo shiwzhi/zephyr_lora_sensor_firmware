@@ -2,7 +2,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/i2c.h>
 
-LOG_MODULE_REGISTER(sps30, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(sps30, LOG_LEVEL_ERR);
 static bool g_is_dataready = false;
 static sps30data_t g_sps30data;
 
@@ -167,6 +167,6 @@ int sps30_get_data(sps30data_t *data)
         memcpy(data, &g_sps30data, sizeof(g_sps30data));
         return 0;
     }
-    LOG_ERR("SPS30 data not ready");
+    LOG_WRN("SPS30 data not ready");
     return -1;
 }

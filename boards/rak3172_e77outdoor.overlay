@@ -30,8 +30,19 @@
 		lora0 = &lora;
 		scd4x = &scd40;
 		bme280 = &bme280;
+		pms-uart = &usart1;
 		sps30 = &sps30;
+		watchdog0 = &iwdg;
+		sht3x = &sht3x;
 	};
+};
+
+&iwdg {
+	status = "okay";
+};
+
+&wwdg {
+	status = "disabled";
 };
 
 &cpu0 {
@@ -46,8 +57,8 @@
 
 	lora: radio@0 {
 		status = "okay";
-		tx-enable-gpios = <&gpioa 8 GPIO_ACTIVE_LOW>; /* FE_CTRL1 */
-		rx-enable-gpios = <&gpioa 1 GPIO_ACTIVE_LOW>;  /* FE_CTRL2 */
+		tx-enable-gpios = <&gpioa 7 GPIO_ACTIVE_LOW>; /* FE_CTRL1 */
+		rx-enable-gpios = <&gpioa 6 GPIO_ACTIVE_LOW>;  /* FE_CTRL2 */
 		power-amplifier-output = "rfo-hp";
 		rfo-hp-max-power = <22>;
 	};
@@ -90,4 +101,9 @@
         reg = < 0x69 >;
         label = "sps30";
     };
+
+	sht3x: sht3xd@44 {
+		compatible = "sensirion,sht3xd";
+		reg = <0x44>;
+	};
 };

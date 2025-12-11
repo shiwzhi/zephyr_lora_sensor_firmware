@@ -4,7 +4,7 @@
 #include "scd4x.h"
 #include "bme280.h"
 
-LOG_MODULE_REGISTER(SCD4x, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(SCD4x, LOG_LEVEL_ERR);
 
 static bool is_scd4x_init = false;
 static uint16_t co2;
@@ -12,9 +12,11 @@ static double temp, hum;
 
 #if DT_HAS_ALIAS(scd4x)
 
+const struct device *const scd4x_dev = DEVICE_DT_GET(DT_ALIAS(scd4x));
+
+
 void scd4x_thread(void *, void *, void *)
 {
-    const struct device *const scd4x_dev = DEVICE_DT_GET(DT_ALIAS(scd4x));
     static struct sensor_value co2_raw, temp_raw, hum_raw;
 
     if (!device_is_ready(scd4x_dev))
@@ -31,11 +33,13 @@ void scd4x_thread(void *, void *, void *)
     bme280_data_t bme280_data;
 
     struct sensor_value scd4x_tempoffset;
-    sensor_value_from_float(&scd4x_tempoffset, 5.0);
+    // sensor_value_from_float(&scd4x_tempoffset, 4.6);
 
-    sensor_attr_set(scd4x_dev, SENSOR_CHAN_ALL, SENSOR_ATTR_SCD4X_TEMPERATURE_OFFSET, &scd4x_tempoffset);
+    // sensor_attr_set(scd4x_dev, SENSOR_CHAN_ALL, SENSOR_ATTR_SCD4X_TEMPERATURE_OFFSET, &scd4x_tempoffset);
+    // scd4x_persist_settings(scd4x_dev);
+
     sensor_attr_get(scd4x_dev, SENSOR_CHAN_ALL, SENSOR_ATTR_SCD4X_TEMPERATURE_OFFSET, &scd4x_tempoffset);
-    LOG_INF("Offset: %d", (int)(sensor_value_to_float(&scd4x_tempoffset) * 10));
+    LOG_INF("Offset: %d", (int)(sensor_value_to_float(&scd4x_tempoffset) * 10.0f));
 
     while (1)
     {
@@ -45,7 +49,7 @@ void scd4x_thread(void *, void *, void *)
             sensor_value_from_double(&scd4x_pressure, bme280_data.pressure_hpa);
             if (0 == sensor_attr_set(scd4x_dev, SENSOR_CHAN_ALL, SENSOR_ATTR_SCD4X_AMBIENT_PRESSURE, &scd4x_pressure))
             {
-                LOG_INF("PRESSURE: %d TEMP: %d", scd4x_pressure.val1, (int)(bme280_data.temp * 10));
+                LOG_DBG("PRESSURE: %d TEMP: %d", scd4x_pressure.val1, (int)(bme280_data.temp * 10));
             }
         }
 
@@ -57,16 +61,16 @@ void scd4x_thread(void *, void *, void *)
             co2 = sensor_value_to_double(&co2_raw);
             temp = sensor_value_to_double(&temp_raw);
             hum = sensor_value_to_double(&hum_raw);
-            LOG_INF("CO2: %d TEMP: %d HUM: %d", co2, (int)(temp * 10), (int)(hum * 10));
+            LOG_DBG("CO2: %d TEMP: %d HUM: %d", co2, (int)(temp * 10), (int)(hum * 10));
         }
 
-        k_sleep(K_MSEC(30 * 1000));
+        k_sleep(K_MSEC(5 * 1000));
     }
 }
 
 K_THREAD_DEFINE(scd4x_tid, 2048,
                 scd4x_thread, NULL, NULL, NULL,
-                7, 0, 0);
+                7, 0, 5000);
 
 #endif
 
@@ -82,4 +86,25 @@ int get_scd4x_data(scd4x_data_t *data)
     data->temp = temp;
     data->hum = hum;
     return 0;
+}
+
+int set_scd4x_offset(float actual_temp) {
+    if (!is_scd4x_init)
+    {
+        // LOG_ERR("SCD4x not init");
+        return -1;
+    }
+
+    struct sensor_value scd4x_tempoffset;
+    sensor_attr_get(scd4x_dev, SENSOR_CHAN_ALL, SENSOR_ATTR_SCD4X_TEMPERATURE_OFFSET, &scd4x_tempoffset);
+    float offset = sensor_value_to_float(&scd4x_tempoffset);
+    offset = (float)temp - actual_temp + offset;
+
+    sensor_value_from_float(&scd4x_tempoffset, offset);
+
+    sensor_attr_set(scd4x_dev, SENSOR_CHAN_ALL, SENSOR_ATTR_SCD4X_TEMPERATURE_OFFSET, &scd4x_tempoffset);
+    sensor_attr_get(scd4x_dev, SENSOR_CHAN_ALL, SENSOR_ATTR_SCD4X_TEMPERATURE_OFFSET, &scd4x_tempoffset);
+    LOG_INF("Offset: %d", (int)(sensor_value_to_float(&scd4x_tempoffset) * 10.0f));
+
+    return scd4x_persist_settings(scd4x_dev);
 }

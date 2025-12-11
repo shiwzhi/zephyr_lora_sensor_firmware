@@ -7,7 +7,7 @@
 
 LOG_MODULE_REGISTER(PMS, LOG_LEVEL_ERR);
 
-static bool pms_is_running = false;
+static bool pms_is_data = false;
 static uint16_t g_pm1, g_pm25, g_pm10;
 
 #if DT_HAS_ALIAS(pms_uart)
@@ -137,7 +137,9 @@ static int pms_read()
         g_pm1 = pms_rx_buf[10] * 0x100 + pms_rx_buf[11];
         g_pm25 = pms_rx_buf[12] * 0x100 + pms_rx_buf[13];
         g_pm10 = pms_rx_buf[14] * 0x100 + pms_rx_buf[15];
-        printf("\r\nPM1: %d PM25: %d PM10: %d\r\n", (int)g_pm1, (int)g_pm25, (int)g_pm10);
+        // printk("\r\nPM1: %d PM25: %d PM10: %d\r\n", (int)g_pm1, (int)g_pm25, (int)g_pm10);
+        pms_is_data = true;
+
     }
     return 0;
 }
@@ -148,8 +150,6 @@ void pms_task(void *, void *, void *)
     {
         return;
     }
-
-    pms_is_running = true;
 
     pms_start();
     k_msleep(10 * 1000);
@@ -173,9 +173,9 @@ K_THREAD_DEFINE(pms_tid, 1024,
 
 int pms_get(pms_data_t *pms_data)
 {
-    if (!pms_is_running)
+    if (!pms_is_data)
     {
-        LOG_ERR("PMS not running");
+        LOG_WRN("PMS data not avaliable");
         return -1;
     }
 

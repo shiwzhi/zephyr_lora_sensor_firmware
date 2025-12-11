@@ -39,6 +39,10 @@
 	status = "okay";
 };
 
+&wwdg {
+	status = "disabled";
+};
+
 &cpu0 {
 	device_type = "cpu";
 	compatible = "arm,cortex-m4";
@@ -48,7 +52,6 @@
 
 &subghzspi {
 	status = "okay";
-
 	lora: radio@0 {
 		status = "okay";
 		tx-enable-gpios = <&gpioa 8 GPIO_ACTIVE_LOW>; /* FE_CTRL1 */
@@ -81,7 +84,7 @@
 	scd40: scd40@62 {
         status = "okay";
         reg = <0x62>;
-		mode = <1>;
+		mode = <0>;
         compatible = "sensirion,scd41";
     };
 
@@ -89,4 +92,5 @@
 		compatible = "bosch,bme280";
 		reg = <0x76>;
 	};
+
 };
