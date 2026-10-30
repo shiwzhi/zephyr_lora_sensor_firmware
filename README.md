@@ -41,6 +41,16 @@ V2 rebuilt the board around a larger SPI display with backlight and
 touch, and moved the particulate sensor from UART (PMS7003) to I2C
 (SPS30), which required a 5 V rail for the fan and a reworked layout.
 
+### SMT assembly note (V1)
+
+Two V1 boards were assembled by JLCPCB. On one of them the **BMP280 was
+placed rotated 180°**. Power rails and I2C ACKs were normal, but the
+readings were wrong. Comparing the physical part against the datasheet
+pinout confirmed the rotation, and the board was sent back for rework.
+The other board in the same batch was correct, which identified this as
+a placement error at the assembly stage rather than a footprint error in
+the design.
+
 Schematics, PCB previews and build photos: [`docs/hardware/`](docs/hardware/).
 
 ---
@@ -49,11 +59,11 @@ Schematics, PCB previews and build photos: [`docs/hardware/`](docs/hardware/).
 
 | Board | Radio | Display | Sensors wired |
 |---|---|---|---|
-| `rak3172` (STM32WLE5CC) | on-chip sub-GHz (RFO-HP, 22 dBm) | — | SCD41, BME280, PMS (UART) |
-| `esp32s3_devkitm_procpu` | SX1262 (SPI) | ST7789V 240×280 + CST816S touch | SCD40, BME280, SPS30 |
-| `esp32c3_devkitm` | SX1262 | SSD1306 128×64 | SCD40, BME280, PMS (UART) |
-| `esp32c3_luatos_core` | SX1262 | SSD1306 | SCD40, BME280, PMS (UART) |
-| `rpi_pico` | SX1262 | — | SCD40, BME280 |
+| `rak3172` (STM32WLE5CC) | on-chip sub-GHz (RFO-HP, 22 dBm) | — | SCD41, BMP280, PMS (UART) |
+| `esp32s3_devkitm_procpu` | SX1262 (SPI) | ST7789V 240×280 + CST816S touch | SCD40, BMP280, SPS30 |
+| `esp32c3_devkitm` | SX1262 | SSD1306 128×64 | SCD40, BMP280, PMS (UART) |
+| `esp32c3_luatos_core` | SX1262 | SSD1306 | SCD40, BMP280, PMS (UART) |
+| `rpi_pico` | SX1262 | — | SCD40, BMP280 |
 
 Board pinout, bus and radio configuration live in
 `boards/<board>.overlay` — no board-conditional code in the application.
@@ -69,7 +79,7 @@ Board pinout, bus and radio configuration live in
 | PMSx003 | PM1 / PM2.5 / PM10 | UART 9600 | `src/drivers/sensors/pms.c` |
 | CM1106 | CO2 | UART | `src/drivers/sensors/cm1106.c` |
 | SHT3x | temperature, humidity | I2C | `src/drivers/sensors/sht3x.c` |
-| BME280 | pressure | I2C | `src/drivers/sensors/bme280.c` |
+| BMP280 | pressure | I2C | `src/drivers/sensors/bme280.c` (shared BME280/BMP280 driver) |
 
 Every driver exposes the same shape (`*_init` / `*_get*`) so `main.c`
 does not care which sensor variant a board carries.
